@@ -1,5 +1,8 @@
 const mongoose = require("mongoose");
 const { DateTime } = require("luxon");
+const {
+  SUPPORTED_WITHDRAWAL_METHODS,
+} = require("../utilities/withdrawalValidation");
 
 const createdOn = DateTime.now().toLocaleString({
   weekday: "short",
@@ -29,7 +32,7 @@ const withdrawSchema = new mongoose.Schema({
   },
   coin: {
     type: String,
-    enum: ["BTC", "ETH", "XRP", "TRX", "CASH APP", "PAYPAL", "BANK TRANSFER"],
+    enum: SUPPORTED_WITHDRAWAL_METHODS,
   },
   status: {
     type: String,

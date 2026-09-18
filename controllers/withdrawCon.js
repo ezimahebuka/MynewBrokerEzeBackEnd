@@ -4,12 +4,19 @@ const userModel = require("../models/User");
 const withdrawModel = require("../models/withdrawModel");
 const emailTemplate = require("../middleware/emailTemplate");
 const Brevo = require("@getbrevo/brevo");
+const {
+  SUPPORTED_WITHDRAWAL_METHODS,
+  normalizeWithdrawalMethod,
+} = require("../utilities/withdrawalValidation");
 // const currencyapi = require('@everapi/currencyapi-js');
 require("dotenv").config();
 // const axios = require('axios');
 
-const VALID_COINS = ["BTC", "ETH", "XRP", "TRX"];
 const VALID_METHODS = ["CRYPTO WALLET", "CASH APP", "PAYPAL", "BANK TRANSFER"];
+const LEGACY_METHOD_TO_COIN = {
+  "CASH APP": "CASHAPP",
+  "BANK TRANSFER": "BANK",
+};
 
 // withdraw function
 exports.withdraw = async (req, res) => {
@@ -58,49 +65,64 @@ exports.withdraw = async (req, res) => {
       });
     }
 
-    // Determine withdrawal method and address
-    let withdrawalMethod = method;
-    if (!withdrawalMethod) {
-      if (cashAppTag) withdrawalMethod = "CASH APP";
-      else if (paypalEmail) withdrawalMethod = "PAYPAL";
-      else if (bankDetails) withdrawalMethod = "BANK TRANSFER";
-      else withdrawalMethod = "CRYPTO WALLET";
-    }
-    let withdrawalAddress;
+    // The frontend sends the selected withdrawal method as coin for every method.
+    const normalizedCoin = normalizeWithdrawalMethod(coin);
+    let selectedCoin = normalizedCoin;
+    let withdrawalMethod = normalizeWithdrawalMethod(method);
+    let withdrawalAddress = walletAddress;
 
-    if (withdrawalMethod === "CRYPTO WALLET") {
-      if (!VALID_COINS.includes(coin)) {
+    if (coin !== undefined) {
+      if (!SUPPORTED_WITHDRAWAL_METHODS.includes(normalizedCoin)) {
         return res.status(400).json({
-          message: `Coin not available. Choose from: ${VALID_COINS.join(", ")}`,
+          message: `Coin not available. Choose from: ${SUPPORTED_WITHDRAWAL_METHODS.join(", ")}`,
         });
       }
       if (!walletAddress) {
         return res.status(400).json({ message: "Wallet address is required" });
       }
-      withdrawalAddress = walletAddress;
-    } else if (withdrawalMethod === "CASH APP") {
-      if (!cashAppTag)
-        return res.status(400).json({ message: "Cash App tag is required" });
-      withdrawalAddress = cashAppTag;
-    } else if (withdrawalMethod === "PAYPAL") {
-      if (!paypalEmail)
-        return res.status(400).json({ message: "PayPal email is required" });
-      withdrawalAddress = paypalEmail;
-    } else if (withdrawalMethod === "BANK TRANSFER") {
-      if (!bankDetails)
-        return res.status(400).json({ message: "Bank details are required" });
-      withdrawalAddress = bankDetails;
+      withdrawalMethod = normalizedCoin;
     } else {
-      return res.status(400).json({
-        message: `Invalid method. Choose from: ${VALID_METHODS.join(", ")}`,
-      });
+      if (!withdrawalMethod) {
+        if (cashAppTag) withdrawalMethod = "CASH APP";
+        else if (paypalEmail) withdrawalMethod = "PAYPAL";
+        else if (bankDetails) withdrawalMethod = "BANK TRANSFER";
+        else withdrawalMethod = "CRYPTO WALLET";
+      }
+
+      if (withdrawalMethod === "CRYPTO WALLET") {
+        return res.status(400).json({
+          message: `Coin not available. Choose from: ${SUPPORTED_WITHDRAWAL_METHODS.join(", ")}`,
+        });
+      }
+
+      selectedCoin =
+        LEGACY_METHOD_TO_COIN[withdrawalMethod] || withdrawalMethod;
+      if (!SUPPORTED_WITHDRAWAL_METHODS.includes(selectedCoin)) {
+        return res.status(400).json({
+          message: `Invalid method. Choose from: ${VALID_METHODS.join(", ")}`,
+        });
+      }
+
+      if (withdrawalMethod === "CASH APP") {
+        if (!cashAppTag)
+          return res.status(400).json({ message: "Cash App tag is required" });
+        withdrawalAddress = cashAppTag;
+      } else if (withdrawalMethod === "PAYPAL") {
+        if (!paypalEmail)
+          return res.status(400).json({ message: "PayPal email is required" });
+        withdrawalAddress = paypalEmail;
+      } else if (withdrawalMethod === "BANK TRANSFER") {
+        if (!bankDetails)
+          return res.status(400).json({ message: "Bank details are required" });
+        withdrawalAddress = bankDetails;
+      }
     }
 
     // Save the withdraw details
     const withdraw = new withdrawModel({
       user: withdrawer._id,
       amount: newAmount,
-      coin: withdrawalMethod === "CRYPTO WALLET" ? coin : withdrawalMethod,
+      coin: selectedCoin,
       walletAddress: withdrawalAddress,
       status: "pending",
     });
