@@ -181,6 +181,13 @@ exports.makeInvestment = async (req, res) => {
       return res.status(404).json({ message: "plan not found" });
     }
 
+    if ((user.totalDeposit || 0) < 200) {
+      return res.status(403).json({
+        message:
+          "Your account is not activated for investments yet. Please make and confirm a deposit of at least $200 to activate your account before investing.",
+      });
+    }
+
     if (user.accountBalance < amount) {
       return res.status(400).json({ message: "Insufficient balance" });
     }
@@ -210,7 +217,7 @@ exports.makeInvestment = async (req, res) => {
     });
     const formattedDateTime = DateTime.fromFormat(
       formattedDate,
-      "EEE, MMM d, yyyy, h:mm a"
+      "EEE, MMM d, yyyy, h:mm a",
     );
 
     // Add 6 days to the formatted date
